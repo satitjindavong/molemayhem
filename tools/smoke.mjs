@@ -105,7 +105,7 @@ function freshPlaying(diff = 'easy') {
   ;['s1', 's2', 's3'].forEach((a, i) => {
     e.holes[i] = { id: 100 + i, hole: i, type: a, def: { score: [1,2,4][i], hits: 1, chain: [a] }, appearance: a, hp: 1, age: 0, life: 3000, state: 'up', dead: false, seriesId: 999, seriesKind: '123', seriesIndex: i }
   })
-  e._seriesExpect[999] = 0
+  e._seriesExpect['123'] = 0
   e.hit(2) // hit '3' first = wrong
   const survivors = e.holes.filter((m) => m && !m.dead)
   const allNormal = survivors.length === 3 && survivors.every((m) => m.type === 'normal' && m.seriesId == null)
@@ -121,7 +121,7 @@ function freshPlaying(diff = 'easy') {
   ;['s1', 's2', 's3'].forEach((a, i) => {
     e.holes[i] = { id: 300 + i, hole: i, type: a, def: { score: [1,2,4][i], hits: 1, chain: [a] }, appearance: a, hp: 1, age: 0, life: 3000, state: 'up', dead: false, seriesId: 777, seriesKind: '123', seriesIndex: i }
   })
-  e._seriesExpect[777] = 0
+  e._seriesExpect['123'] = 0
   e.hit(2)
   const alive = e.holes.filter((m) => m && !m.dead && m.seriesId === 777).length
   if (alive !== 0) { console.error('✗ flee mode: set should be gone', alive); ok = false }
@@ -134,11 +134,59 @@ function freshPlaying(diff = 'easy') {
   ;['s1', 's2', 's3'].forEach((a, i) => {
     e.holes[i] = { id: 200 + i, hole: i, type: a, def: { score: [1,2,4][i], hits: 1, chain: [a] }, appearance: a, hp: 1, age: 0, life: 3000, state: 'up', dead: false, seriesId: 888, seriesKind: '123', seriesIndex: i }
   })
-  e._seriesExpect[888] = 0
+  e._seriesExpect['123'] = 0
   const before = e.score
   e.hit(0); e.hit(1); e.hit(2)
   if (e.score !== before + 7) { console.error('✗ series ordered should give 7, got', e.score - before); ok = false }
   else console.log('✓ series 1->2->3 ordered: +7')
+}
+
+// TWO 123 sets up at once: order is by POSITION pooled across sets, so tapping
+// 1(A),2(B),3(A) then 1(B),2(A),3(B) all scores with no foul.
+{
+  const e = freshPlaying()
+  const mk = (id, hole, a, idx, sid) => ({
+    id, hole, type: a, def: { score: [1, 2, 4][idx], hits: 1, chain: [a] },
+    appearance: a, hp: 1, age: 0, life: 3000, state: 'up', dead: false,
+    seriesId: sid, seriesKind: '123', seriesIndex: idx,
+  })
+  // set A in holes 0,1,2 ; set B in holes 3,4,5
+  e.holes[0] = mk(401, 0, 's1', 0, 4001); e.holes[1] = mk(402, 1, 's2', 1, 4001); e.holes[2] = mk(403, 2, 's3', 2, 4001)
+  e.holes[3] = mk(404, 3, 's1', 0, 4002); e.holes[4] = mk(405, 4, 's2', 1, 4002); e.holes[5] = mk(406, 5, 's3', 2, 4002)
+  e._seriesExpect['123'] = 0
+  e.combo = 0
+  const before = e.score
+  // interleave sets: 1(A)@0, 2(B)@4, 3(A)@2  -> full word, +7
+  e.hit(0); e.hit(4); e.hit(2)
+  const word1ok = e.score === before + 7 && e.combo === 3
+  // remaining leftovers form another word: 1(B)@3, 2(A)@1, 3(B)@5 -> +7 more
+  e.hit(3); e.hit(1); e.hit(5)
+  const word2ok = e.score === before + 14 && e.combo === 6
+  const noBroken = e.holes.every((m) => !m || m.dead)
+  if (!word1ok) { console.error('✗ interleaved word 1 should score 7 & combo 3, got', e.score - before, e.combo); ok = false }
+  else if (!word2ok) { console.error('✗ interleaved word 2 should reach +14 & combo 6, got', e.score - before, e.combo); ok = false }
+  else if (!noBroken) { console.error('✗ both interleaved sets should be fully cleared'); ok = false }
+  else console.log('✓ series cross-set: interleaved 1→2→3 across two sets scores +14, no foul')
+}
+
+// Cross-set still fouls on a genuine out-of-position tap (2 before 1)
+{
+  const e = freshPlaying()
+  const mk = (id, hole, a, idx, sid) => ({
+    id, hole, type: a, def: { score: [1, 2, 4][idx], hits: 1, chain: [a] },
+    appearance: a, hp: 1, age: 0, life: 3000, state: 'up', dead: false,
+    seriesId: sid, seriesKind: '123', seriesIndex: idx,
+  })
+  e.holes[0] = mk(501, 0, 's1', 0, 5001); e.holes[1] = mk(502, 1, 's2', 1, 5001); e.holes[2] = mk(503, 2, 's3', 2, 5001)
+  e.holes[3] = mk(504, 3, 's1', 0, 5002); e.holes[4] = mk(505, 4, 's2', 1, 5002); e.holes[5] = mk(506, 5, 's3', 2, 5002)
+  e._seriesExpect['123'] = 0
+  e.combo = 5
+  e.hit(0) // 1(A) ok, expected -> 1
+  e.hit(2) // 3(A) while expecting position 1 -> foul: all '123' sets orphaned
+  const anySeries = e.holes.some((m) => m && !m.dead && m.seriesKind === '123')
+  if (e.combo !== 0) { console.error('✗ cross-set foul should reset combo'); ok = false }
+  else if (anySeries) { console.error('✗ cross-set foul (normal mode) should orphan ALL 123 sets'); ok = false }
+  else console.log('✓ series cross-set: out-of-position tap fouls and clears the whole 123 pool')
 }
 
 // nurse heals a heart only (no time bonus), keeps combo

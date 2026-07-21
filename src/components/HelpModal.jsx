@@ -7,7 +7,7 @@ const MOLE_INFO = [
   ['golden', 'Golden Mole', 'Super fast! = 5 pts'],
   ['s1', '123 Mole', 'Tap in order 1→2→3'],
   ['sM', 'MOLE Mole', 'Tap M→O→L→E'],
-  ['nurse', 'Nurse Mole', 'Heal / +time'],
+  ['nurse', 'Nurse Mole', 'Heal'],
   ['bomb', 'Bomb Mole', "Don't hit! -1 heart"],
   ['rabbit', 'Clock Rabbit', 'Hit it for +time!'],
 ]

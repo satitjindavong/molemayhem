@@ -61,7 +61,7 @@ export class GameEngine {
     this.fever = false
     this.sound?.setFeverTempo(false) // reset BGM tempo (was stuck fast on replay)
     this.status = 'countdown'
-    this._seriesExpect = {} // seriesId -> next expected member index
+    this._seriesExpect = {} // seriesKind -> next expected position (pooled across sets)
   }
 
   // ---------------------------------------------------------------------------
@@ -152,7 +152,7 @@ export class GameEngine {
       }
       if (m.age >= m.life) {
         // Natural escape — no combo penalty (GDD note). Series escapes as a group.
-        if (m.seriesId) this._removeSeries(m.seriesId, 'burrow', false)
+        if (m.seriesId) this._removeSeries(m.seriesId, 'burrow')
         else this._retire(m, 'burrow')
       }
     }
@@ -243,7 +243,10 @@ export class GameEngine {
     if (empties.length < def.members.length) return
     const holes = [...empties].sort(() => Math.random() - 0.5).slice(0, def.members.length)
     const seriesId = uid()
-    this._seriesExpect[seriesId] = 0
+    // Progression is tracked per series KIND (pooled across all sets on the
+    // board). Only start a fresh count when no set of this kind is currently up
+    // — a new set spawning mid-word just joins the existing pool.
+    if (this._liveSeriesCount(kind) === 0) this._seriesExpect[kind] = 0
     const life = this.difficulty.spawnLife / this.phase.speedMult
     def.members.forEach((appearance, idx) => {
       const hole = holes[idx]
@@ -348,34 +351,51 @@ export class GameEngine {
   }
 
   _hitSeries(mole) {
-    const { seriesId, seriesKind } = mole
+    const { seriesKind, seriesIndex } = mole
     const def = SERIES[seriesKind]
 
-    const expected = this._seriesExpect[seriesId] ?? 0
-    if (mole.seriesIndex === expected) {
-      const pts = def.scores[mole.seriesIndex]
+    // Order is checked by POSITION within the word, pooled across every set of
+    // this kind on the board. So with two 123 sets up you may tap 1️⃣ from set A,
+    // 2️⃣ from set B, 3️⃣ from set A and still score — you just have to keep the
+    // 1→2→3 (or M→O→L→E) order regardless of which set each mole belongs to.
+    const expected = this._seriesExpect[seriesKind] ?? 0
+    if (seriesIndex === expected) {
+      const pts = def.scores[seriesIndex]
       this._killMole(mole, pts)
-      this._seriesExpect[seriesId] = expected + 1
-      this.sound?.seriesNote(seriesKind, mole.seriesIndex)
-      // Completed the whole word?
-      const remaining = this.holes.some((h) => h && h.seriesId === seriesId && !h.dead)
-      if (!remaining) { this.sound?.seriesComplete(); delete this._seriesExpect[seriesId] }
+      this.sound?.seriesNote(seriesKind, seriesIndex)
+      const next = expected + 1
+      if (next >= def.members.length) {
+        // A full word (0..n-1) finished — its members may have come from
+        // different sets. Reward the jingle and start the next word at 0.
+        this.sound?.seriesComplete()
+        this._seriesExpect[seriesKind] = 0
+      } else {
+        this._seriesExpect[seriesKind] = next
+      }
       this._maybeConsumeAfterNormalStrike()
     } else {
-      // Wrong order -> combo resets + loud feedback. What happens to the set is
-      // configurable per difficulty: 'flee' = all disappear, 'normal' (default)
-      // = survivors turn into plain normal moles you can still whack.
+      // Wrong position -> combo resets + loud feedback. Because the progression
+      // is shared across all sets of this kind, a foul breaks the whole pool.
+      // What happens to those moles is configurable per difficulty: 'flee' =
+      // all disappear, 'normal' (default) = they turn into plain normal moles.
       const mode = this.difficulty.seriesMissMode || 'normal'
       this._fx(mole.hole, 'MISS!', 'miss')
       if (mode === 'flee') {
-        this._removeSeries(seriesId, 'burrow', true)
+        this._removeSeriesKind(seriesKind, 'burrow')
       } else {
-        this._orphanSeriesToNormal(seriesId)
+        this._orphanSeriesKindToNormal(seriesKind)
       }
       this._breakCombo()
       this._setFlash('miss')
       this.sound?.seriesFail()
     }
+  }
+
+  // Count live (not-dead) series moles of a given kind currently on the board.
+  _liveSeriesCount(kind) {
+    let n = 0
+    for (const m of this.holes) if (m && m.seriesKind === kind && !m.dead) n++
+    return n
   }
 
   _hitBomb(mole) {
@@ -390,17 +410,19 @@ export class GameEngine {
   // --- Special-hammer strikes -------------------------------------------------
 
   // Power Hammer: one-hit-kill ANY mole for full score; bombs & rabbits die
-  // harmlessly (no life loss, no combo break). 10 uses.
+  // harmlessly (no life loss, no combo break). 10 uses. It always plays the
+  // single power-hammer smash sound (`hitMetal`) no matter what it strikes —
+  // the rabbit/nurse gameplay effects still apply, just with their own chime
+  // suppressed so the hammer sounds consistent.
   _powerSmash(mole) {
     switch (mole.type) {
       case 'bomb':
         // defused: no explosion — the bomb just dodges back down the hole.
-        // Plays the normal power-hammer smash sound (not the low bomb thud).
         this._retire(mole, 'burrow'); this.sound?.hitMetal(); break
       case 'rabbit':
-        this._hitRabbit(mole); break // clock rabbit -> bonus time
+        this._hitRabbit(mole, true); this.sound?.hitMetal(); break // +time, hammer sound
       case 'nurse':
-        this._hitNurse(mole); break
+        this._hitNurse(mole, true); this.sound?.hitMetal(); break // heal, hammer sound
       default: {
         // normal / stone / metal / golden / series member -> full score kill
         const sid = mole.seriesId
@@ -453,13 +475,15 @@ export class GameEngine {
     this._consumeHammer()
   }
 
-  // Any surviving members of a series (after some were destroyed out of order,
-  // e.g. by a bomb blast or power hammer) revert to plain normal moles so the
-  // player is never left with an un-completable "broken" series.
+  // Any surviving members of a single series set (after some were destroyed out
+  // of order, e.g. by a bomb blast or power hammer) revert to plain normal moles
+  // so the player is never left with an un-completable "broken" series.
   _orphanSeriesToNormal(seriesId) {
     if (seriesId == null) return
+    let kind = null
     this.holes.forEach((m) => {
       if (m && m.seriesId === seriesId && !m.dead) {
+        kind = m.seriesKind
         m.type = 'normal'
         m.appearance = 'normal'
         m.def = MOLE_TYPES.normal
@@ -469,7 +493,33 @@ export class GameEngine {
         m.seriesIndex = undefined
       }
     })
-    delete this._seriesExpect[seriesId]
+    // if that emptied the pool for this kind, reset its pooled progression
+    if (kind && this._liveSeriesCount(kind) === 0) delete this._seriesExpect[kind]
+  }
+
+  // Convert EVERY live set of a kind to normal moles (used on a foul, since the
+  // 1→2→3 progression is pooled across all sets of the kind).
+  _orphanSeriesKindToNormal(kind) {
+    this.holes.forEach((m) => {
+      if (m && m.seriesKind === kind && !m.dead) {
+        m.type = 'normal'
+        m.appearance = 'normal'
+        m.def = MOLE_TYPES.normal
+        m.hp = 1
+        m.seriesId = undefined
+        m.seriesKind = undefined
+        m.seriesIndex = undefined
+      }
+    })
+    delete this._seriesExpect[kind]
+  }
+
+  // Make every live set of a kind flee/burrow (foul in 'flee' mode).
+  _removeSeriesKind(kind, exit) {
+    this.holes.forEach((m) => {
+      if (m && m.seriesKind === kind && !m.dead) this._retire(m, exit)
+    })
+    delete this._seriesExpect[kind]
   }
 
   // Neighbour offsets [dr,dc] for the two configurable bomb blast shapes.
@@ -523,19 +573,22 @@ export class GameEngine {
   }
 
   // Clock Rabbit: hitting it grants bonus time and keeps the combo alive.
-  _hitRabbit(mole) {
+  // `silent` suppresses its chime (used by the power hammer, which plays its
+  // own single smash sound instead).
+  _hitRabbit(mole, silent = false) {
     this._retire(mole, 'hit')
     this.timeLeft += EFFECTS.rabbitTimeBonus
     this._fx(mole.hole, `+${EFFECTS.rabbitTimeBonus}s`, 'time')
-    this.sound?.nurse()
+    if (!silent) this.sound?.nurse()
     this._setFlash('heal')
     this._bumpCombo(1)
   }
 
   // Nurse mole: restores a heart (no time bonus). If already full, no effect.
-  _hitNurse(mole) {
+  // `silent` suppresses its chime (see _hitRabbit).
+  _hitNurse(mole, silent = false) {
     this._retire(mole, 'hit')
-    this.sound?.nurse()
+    if (!silent) this.sound?.nurse()
     if (this.lives < this.maxLives) {
       this.lives += 1
       this._fx(mole.hole, '❤️+1', 'heal')
@@ -566,14 +619,16 @@ export class GameEngine {
     mole.dead = true
     mole.state = exit === 'burrow' ? 'burrow' : 'hit'
     mole.removeAt = mole.age + (exit === 'explode' ? 200 : 350)
-    if (mole.seriesId) this._seriesExpect[mole.seriesId] = undefined
   }
 
-  _removeSeries(seriesId, exit, _penalty) {
+  // Retire a whole spawned set together (natural group escape on timeout).
+  _removeSeries(seriesId, exit) {
+    let kind = null
     this.holes.forEach((m) => {
-      if (m && m.seriesId === seriesId && !m.dead) this._retire(m, exit)
+      if (m && m.seriesId === seriesId && !m.dead) { kind = m.seriesKind; this._retire(m, exit) }
     })
-    delete this._seriesExpect[seriesId]
+    // reset pooled progression only if no other set of this kind is still up
+    if (kind && this._liveSeriesCount(kind) === 0) delete this._seriesExpect[kind]
   }
 
   // ---------------------------------------------------------------------------
