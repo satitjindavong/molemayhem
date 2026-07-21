@@ -1,3 +1,4 @@
+import { Analytics } from '@vercel/analytics/react'
 import PhoneFrame from './components/PhoneFrame'
 import Menu from './components/Menu'
 import Countdown from './components/Countdown'
@@ -30,6 +31,9 @@ export default function App() {
       {g.screen === 'gameover' && g.snap && (
         <GameOver snap={g.snap} onReplay={g.replay} onMenu={g.goMenu} />
       )}
+
+      {/* Vercel Web Analytics (no-op locally; collects data once deployed) */}
+      <Analytics />
     </PhoneFrame>
   )
 }
