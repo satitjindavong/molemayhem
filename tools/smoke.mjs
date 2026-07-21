@@ -288,6 +288,7 @@ function freshPlaying(diff = 'easy') {
 // Bomb hammer: hitting any mole cross-blasts neighbours; rabbits harmless; 1 use
 {
   const e = freshPlaying()
+  e.difficulty = { ...e.difficulty, bombBlast: 'cross' }
   e.inventoryHammer = 'bomb'; e.toggleHammer('bomb')
   // center normal at hole 4, neighbour normal at hole 1 (above), rabbit at 5
   e.holes[4] = e._createMole('normal', 4)
@@ -305,6 +306,33 @@ function freshPlaying(diff = 'easy') {
   else console.log('✓ bomb: rabbit in blast, no life lost')
   if (e.inventoryHammer !== null && e.activeHammer !== null) { console.error('✗ bomb should be single-use'); ok = false }
   else console.log('✓ bomb: consumed (single use)')
+}
+
+// Bomb hammer 'square' blast (9 holes) also catches diagonal neighbours
+{
+  const e = freshPlaying() // easy, 3x3, bombBlast 'square'
+  e.difficulty = { ...e.difficulty, bombBlast: 'square' }
+  e.inventoryHammer = 'bomb'; e.toggleHammer('bomb')
+  // center at 4, diagonal neighbour at 0 (r0,c0). Under 'cross' hole 0 survives.
+  e.holes[4] = e._createMole('normal', 4)
+  e.holes[0] = e._createMole('normal', 0)
+  e.hit(4)
+  const diagCleared = !e.holes[0] || e.holes[0].dead
+  if (!diagCleared) { console.error('✗ square blast should clear diagonal neighbour (hole 0)'); ok = false }
+  else console.log('✓ bomb: square blast cleared diagonal neighbour (9-cell)')
+}
+
+// Bomb hammer 'cross' blast leaves diagonal neighbours untouched
+{
+  const e = freshPlaying()
+  e.difficulty = { ...e.difficulty, bombBlast: 'cross' }
+  e.inventoryHammer = 'bomb'; e.toggleHammer('bomb')
+  e.holes[4] = e._createMole('normal', 4)
+  e.holes[0] = e._createMole('normal', 0) // diagonal — should survive a cross
+  e.hit(4)
+  const diagSurvives = e.holes[0] && !e.holes[0].dead
+  if (!diagSurvives) { console.error('✗ cross blast should NOT clear diagonal neighbour (hole 0)'); ok = false }
+  else console.log('✓ bomb: cross blast leaves diagonal neighbour intact')
 }
 
 // Golden (chain) hammer: activating turns all up moles gold, single use

@@ -53,6 +53,7 @@ export const DIFFICULTIES = {
     rabbitRate: 0.02, // โอกาสเกิดกระต่ายนาฬิกา (เพิ่มเวลา) ต่อการเกิด 1 ตัว
     seriesMissMode: 'normal', // ตี Series ผิดลำดับ: 'normal'=กลายเป็นตุ่นธรรมดา, 'flee'=หายหมด
     startClosed: 0, // จำนวนหลุมที่ถูกปิดด้วยไม้กระดานตอนเริ่มเกม (0-4)
+    bombBlast: 'square', // รูปแบบระเบิดค้อนระเบิด: 'cross'=กากบาท(5 ช่อง), 'square'=รอบตัว(9 ช่อง)
     background: 'bg/easy.jpg',
     theme: 'flower',
   },
@@ -70,6 +71,7 @@ export const DIFFICULTIES = {
     rabbitRate: 0.02,
     seriesMissMode: 'normal',
     startClosed: 2,
+    bombBlast: 'square', // 9 ช่อง
     background: 'bg/medium.jpg',
     theme: 'desert',
   },
@@ -86,6 +88,7 @@ export const DIFFICULTIES = {
     rabbitRate: 0.02,
     seriesMissMode: 'normal',
     startClosed: 0,
+    bombBlast: 'cross', // 5 ช่อง (กากบาท) — ด่านยากยังเป็นแบบเดิม
     background: 'bg/hard.jpg',
     theme: 'graveyard',
   },
@@ -113,7 +116,7 @@ export const PHASES = [
     speedMult: 1.0,
     spawnRateMult: 1.0,
     scoreMult: 1,
-    weights: { normal: 52, stone: 15, bomb: 15, golden: 8, series: 8, nurse: 2 },
+    weights: { normal: 40, stone: 15, bomb: 15, golden: 8, series: 20, nurse: 2 },
   },
   {
     id: 3,
@@ -211,6 +214,7 @@ export const EFFECTS = {
   iceFreezeDuration: 2000, // ms
   iceTimeBonusPerHit: 2, // seconds added when hitting during ice hammer proc
   bombLifePenalty: 1, // hearts lost when hitting a bomb
+  bombBlastDefault: 'cross', // รูปแบบระเบิดค้อนระเบิด default ถ้าด่านไม่กำหนด
   rabbitTimeBonus: 2, // วินาทีที่ได้เพิ่มเมื่อตีกระต่ายนาฬิกา (ปรับได้)
   heartBonus: 5, // คะแนนโบนัสต่อหัวใจที่เหลือ 1 ดวง ตอนจบเกม (ปรับได้)
   countdownSeconds: 3, // 3..2..1..GO

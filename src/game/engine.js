@@ -394,8 +394,9 @@ export class GameEngine {
   _powerSmash(mole) {
     switch (mole.type) {
       case 'bomb':
-        // defused: no explosion — the bomb just dodges back down the hole
-        this._retire(mole, 'burrow'); this.sound?.miss(); break
+        // defused: no explosion — the bomb just dodges back down the hole.
+        // Plays the normal power-hammer smash sound (not the low bomb thud).
+        this._retire(mole, 'burrow'); this.sound?.hitMetal(); break
       case 'rabbit':
         this._hitRabbit(mole); break // clock rabbit -> bonus time
       case 'nurse':
@@ -471,29 +472,40 @@ export class GameEngine {
     delete this._seriesExpect[seriesId]
   }
 
-  // Bomb Hammer: hitting ANY mole triggers a cross blast (up/down/left/right).
-  // Every mole caught is destroyed; scoreable ones give points, bombs & rabbits
-  // are cleared harmlessly. Single use.
+  // Neighbour offsets [dr,dc] for the two configurable bomb blast shapes.
+  //   'cross'  -> centre + up/down/left/right   (5 holes)
+  //   'square' -> centre + all 8 neighbours     (9 holes)
+  static BLAST_OFFSETS = {
+    cross: [[0, 0], [-1, 0], [1, 0], [0, -1], [0, 1]],
+    square: [
+      [-1, -1], [-1, 0], [-1, 1],
+      [0, -1], [0, 0], [0, 1],
+      [1, -1], [1, 0], [1, 1],
+    ],
+  }
+
+  // Bomb Hammer: hitting ANY mole triggers a blast whose shape is configurable
+  // per difficulty (`bombBlast`: 'cross' or 'square'). Every mole caught is
+  // destroyed; scoreable ones give points, bombs & rabbits are cleared
+  // harmlessly. Single use.
   _bombSmash(mole) {
     this.sound?.bomb()
-    this._fx(mole.hole, '', 'boom', 'cross') // big cross at the centre
     const cols = this.cols
     const rows = this.rows
     const r = Math.floor(mole.hole / cols)
     const c = mole.hole % cols
-    const center = [r, c]
-    const arms = [[r - 1, c], [r + 1, c], [r, c - 1], [r, c + 1]]
+    const shape = this.difficulty.bombBlast || EFFECTS.bombBlastDefault || 'cross'
+    const offsets = GameEngine.BLAST_OFFSETS[shape] || GameEngine.BLAST_OFFSETS.cross
     let gained = 0
     const hitSeries = new Set()
-    // arms: always show an explosion burst on the up/down/left/right holes
-    arms.forEach(([nr, nc]) => {
+    offsets.forEach(([dr, dc]) => {
+      const nr = r + dr
+      const nc = c + dc
       if (nr < 0 || nc < 0 || nr >= rows || nc >= cols) return
-      this._fx(nr * cols + nc, '', 'boom', 'boom')
-    })
-    // resolve damage on centre + arms
-    ;[center, ...arms].forEach(([nr, nc]) => {
-      if (nr < 0 || nc < 0 || nr >= rows || nc >= cols) return
-      const nm = this.holes[nr * cols + nc]
+      const idx = nr * cols + nc
+      // explosion burst on every affected hole (big cross sprite at the centre)
+      this._fx(idx, '', 'boom', dr === 0 && dc === 0 ? 'cross' : 'boom')
+      const nm = this.holes[idx]
       if (!nm || nm.dead) return
       if (nm.def.harmful) {
         this._retire(nm, 'explode') // bombs & rabbits cleared, no penalty
