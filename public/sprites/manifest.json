@@ -1,0 +1,157 @@
+{
+  "normal": {
+    "peek": "sprites/normal_peek.png",
+    "half": "sprites/normal_half.png",
+    "up": "sprites/normal_up.png",
+    "happy": "sprites/normal_happy.png",
+    "hit": "sprites/normal_hit.png",
+    "burrow": "sprites/normal_burrow.png"
+  },
+  "stone": {
+    "peek": "sprites/stone_peek.png",
+    "half": "sprites/stone_half.png",
+    "up": "sprites/stone_up.png",
+    "happy": "sprites/stone_happy.png",
+    "hit": "sprites/stone_hit.png",
+    "burrow": "sprites/stone_burrow.png"
+  },
+  "metal": {
+    "peek": "sprites/metal_peek.png",
+    "half": "sprites/metal_half.png",
+    "up": "sprites/metal_up.png",
+    "happy": "sprites/metal_happy.png",
+    "hit": "sprites/metal_hit.png",
+    "burrow": "sprites/metal_burrow.png"
+  },
+  "golden": {
+    "peek": "sprites/golden_peek.png",
+    "half": "sprites/golden_half.png",
+    "up": "sprites/golden_up.png",
+    "happy": "sprites/golden_happy.png",
+    "hit": "sprites/golden_hit.png",
+    "burrow": "sprites/golden_burrow.png"
+  },
+  "bomb": {
+    "peek": "sprites/bomb_peek.png",
+    "half": "sprites/bomb_half.png",
+    "up": "sprites/bomb_up.png",
+    "happy": "sprites/bomb_happy.png",
+    "hit": "sprites/bomb_hit.png",
+    "burrow": "sprites/bomb_burrow.png"
+  },
+  "nurse": {
+    "peek": "sprites/nurse_peek.png",
+    "half": "sprites/nurse_half.png",
+    "up": "sprites/nurse_up.png",
+    "happy": "sprites/nurse_happy.png",
+    "hit": "sprites/nurse_hit.png",
+    "burrow": "sprites/nurse_burrow.png"
+  },
+  "ice": {
+    "peek": "sprites/ice_peek.png",
+    "half": "sprites/ice_half.png",
+    "up": "sprites/ice_up.png",
+    "happy": "sprites/ice_happy.png",
+    "hit": "sprites/ice_hit.png",
+    "burrow": "sprites/ice_burrow.png"
+  },
+  "s1": {
+    "peek": "sprites/s1_peek.png",
+    "half": "sprites/s1_half.png",
+    "up": "sprites/s1_up.png",
+    "happy": "sprites/s1_happy.png",
+    "hit": "sprites/s1_hit.png",
+    "burrow": "sprites/s1_burrow.png"
+  },
+  "s2": {
+    "peek": "sprites/s2_peek.png",
+    "half": "sprites/s2_half.png",
+    "up": "sprites/s2_up.png",
+    "happy": "sprites/s2_happy.png",
+    "hit": "sprites/s2_hit.png",
+    "burrow": "sprites/s2_burrow.png"
+  },
+  "s3": {
+    "peek": "sprites/s3_peek.png",
+    "half": "sprites/s3_half.png",
+    "up": "sprites/s3_up.png",
+    "happy": "sprites/s3_happy.png",
+    "hit": "sprites/s3_hit.png",
+    "burrow": "sprites/s3_burrow.png"
+  },
+  "sM": {
+    "peek": "sprites/sM_peek.png",
+    "half": "sprites/sM_half.png",
+    "up": "sprites/sM_up.png",
+    "happy": "sprites/sM_happy.png",
+    "hit": "sprites/sM_hit.png",
+    "burrow": "sprites/sM_burrow.png"
+  },
+  "sO": {
+    "peek": "sprites/sO_peek.png",
+    "half": "sprites/sO_half.png",
+    "up": "sprites/sO_up.png",
+    "happy": "sprites/sO_happy.png",
+    "hit": "sprites/sO_hit.png",
+    "burrow": "sprites/sO_burrow.png"
+  },
+  "sL": {
+    "peek": "sprites/sL_peek.png",
+    "half": "sprites/sL_half.png",
+    "up": "sprites/sL_up.png",
+    "happy": "sprites/sL_happy.png",
+    "hit": "sprites/sL_hit.png",
+    "burrow": "sprites/sL_burrow.png"
+  },
+  "sE": {
+    "peek": "sprites/sE_peek.png",
+    "half": "sprites/sE_half.png",
+    "up": "sprites/sE_up.png",
+    "happy": "sprites/sE_happy.png",
+    "hit": "sprites/sE_hit.png",
+    "burrow": "sprites/sE_burrow.png"
+  },
+  "rabbit": {
+    "peek": "sprites/rabbit_peek.png",
+    "half": "sprites/rabbit_half.png",
+    "up": "sprites/rabbit_up.png",
+    "happy": "sprites/rabbit_happy.png",
+    "hit": "sprites/rabbit_hit.png",
+    "burrow": "sprites/rabbit_burrow.png"
+  },
+  "h_normal": {
+    "idle": "sprites/h_normal_idle.png",
+    "swing": "sprites/h_normal_swing.png",
+    "hit": "sprites/h_normal_hit.png",
+    "shake": "sprites/h_normal_shake.png",
+    "bomb": "sprites/h_normal_bomb.png"
+  },
+  "h_bomb": {
+    "idle": "sprites/h_bomb_idle.png",
+    "swing": "sprites/h_bomb_swing.png",
+    "hit": "sprites/h_bomb_hit.png",
+    "shake": "sprites/h_bomb_shake.png",
+    "bomb": "sprites/h_bomb_bomb.png"
+  },
+  "h_power": {
+    "idle": "sprites/h_power_idle.png",
+    "swing": "sprites/h_power_swing.png",
+    "hit": "sprites/h_power_hit.png",
+    "shake": "sprites/h_power_shake.png",
+    "bomb": "sprites/h_power_bomb.png"
+  },
+  "h_chain": {
+    "idle": "sprites/h_chain_idle.png",
+    "swing": "sprites/h_chain_swing.png",
+    "hit": "sprites/h_chain_hit.png",
+    "shake": "sprites/h_chain_shake.png",
+    "bomb": "sprites/h_chain_bomb.png"
+  },
+  "h_ice": {
+    "idle": "sprites/h_ice_idle.png",
+    "swing": "sprites/h_ice_swing.png",
+    "hit": "sprites/h_ice_hit.png",
+    "shake": "sprites/h_ice_shake.png",
+    "bomb": "sprites/h_ice_bomb.png"
+  }
+}

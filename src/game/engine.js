@@ -1,0 +1,714 @@
+// ============================================================================
+//  Mole Mayhem — Game Engine (framework-agnostic, dt-driven)
+//  Owns all gameplay state & rules. React mirrors `snapshot()` each frame.
+// ============================================================================
+import {
+  DIFFICULTIES, PHASES, MOLE_TYPES, SERIES, COMBO, HAMMERS, HAMMER_POOL, EFFECTS, GRID,
+} from './config'
+
+let _uid = 1
+const uid = () => _uid++
+const rand = (a, b) => a + Math.random() * (b - a)
+const choice = (arr) => arr[(Math.random() * arr.length) | 0]
+
+function weightedPick(weights) {
+  const entries = Object.entries(weights)
+  const total = entries.reduce((s, [, w]) => s + w, 0)
+  let r = Math.random() * total
+  for (const [k, w] of entries) {
+    if ((r -= w) <= 0) return k
+  }
+  return entries[0][0]
+}
+
+export class GameEngine {
+  constructor(sound) {
+    this.sound = sound
+    this.reset('easy')
+    this.status = 'idle'
+  }
+
+  reset(difficultyKey) {
+    const d = DIFFICULTIES[difficultyKey]
+    this.difficultyKey = difficultyKey
+    this.difficulty = d
+    this.timeLeft = d.timeLimit
+    this.totalTime = d.timeLimit
+    this.lives = d.startingLives
+    this.maxLives = d.startingLives
+    this.score = 0
+    this.combo = 0
+    this.bestCombo = 0
+    // board size can differ per difficulty (3x3 or 3x4)
+    this.cols = GRID.cols
+    this.rows = d.boardRows || GRID.rows
+    this.holes = new Array(this.cols * this.rows).fill(null)
+    this.closed = new Set() // holes permanently closed by a wooden plate
+    // randomly close `startClosed` holes with planks at the start of the game
+    const nStart = Math.min(d.startClosed || 0, this.holes.length - 1)
+    const shuffled = [...this.holes.keys()].sort(() => Math.random() - 0.5)
+    for (let i = 0; i < nStart; i++) this.closed.add(shuffled[i])
+    this.heartBonus = 0
+    this.spawnAccum = 0
+    this.nextSpawnIn = 600
+    this.freezeLeft = 0
+    this.inventoryHammer = null
+    this.activeHammer = null
+    this.activeHammerUses = 0
+    this.effects = []
+    this.flash = null // {type:'heal'|'damage'|'miss', ttl}
+    this.phase = PHASES[0]
+    this.fever = false
+    this.sound?.setFeverTempo(false) // reset BGM tempo (was stuck fast on replay)
+    this.status = 'countdown'
+    this._seriesExpect = {} // seriesId -> next expected member index
+  }
+
+  // ---------------------------------------------------------------------------
+  //  Snapshot for rendering
+  // ---------------------------------------------------------------------------
+  snapshot() {
+    return {
+      status: this.status,
+      difficultyKey: this.difficultyKey,
+      timeLeft: Math.max(0, this.timeLeft),
+      totalTime: this.totalTime,
+      lives: this.lives,
+      maxLives: this.maxLives,
+      score: this.score,
+      combo: this.combo,
+      bestCombo: this.bestCombo,
+      holes: this.holes,
+      closed: this.closed,
+      cols: this.cols,
+      rows: this.rows,
+      phase: this.phase,
+      fever: this.fever,
+      frozen: this.freezeLeft > 0,
+      inventoryHammer: this.inventoryHammer,
+      activeHammer: this.activeHammer,
+      activeHammerUses: this.activeHammerUses,
+      effects: this.effects,
+      flash: this.flash,
+      heartBonus: this.heartBonus,
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  //  Main loop
+  // ---------------------------------------------------------------------------
+  tick(dt) {
+    if (this.status !== 'playing') return
+    // Effects fade regardless of freeze.
+    this._advanceEffects(dt)
+
+    if (this.freezeLeft > 0) {
+      this.freezeLeft -= dt
+      if (this.freezeLeft <= 0) this._unfreeze()
+      return // clock, spawns & mole aging are paused while frozen
+    }
+
+    // Game clock
+    this.timeLeft -= dt / 1000
+    this._updatePhase()
+
+    if (this.timeLeft <= 0) {
+      this.timeLeft = 0
+      return this._gameOver()
+    }
+
+    // Mole aging / expiry
+    this._ageMoles(dt)
+
+    // Spawning
+    this.spawnAccum += dt
+    if (this.spawnAccum >= this.nextSpawnIn) {
+      this.spawnAccum = 0
+      this._spawn()
+      const [mn, mx] = this.difficulty.spawnInterval
+      this.nextSpawnIn = rand(mn, mx) / this.phase.spawnRateMult
+    }
+  }
+
+  _advanceEffects(dt) {
+    if (this.flash) {
+      this.flash.ttl -= dt
+      if (this.flash.ttl <= 0) this.flash = null
+    }
+    if (this.effects.length === 0) return
+    this.effects = this.effects.filter((e) => (e.ttl -= dt) > 0)
+  }
+
+  _setFlash(type, ttl = 550) { this.flash = { type, ttl, id: uid() } }
+
+  _ageMoles(dt) {
+    for (let i = 0; i < this.holes.length; i++) {
+      const m = this.holes[i]
+      if (!m) continue
+      m.age += dt
+      if (m.dead) {
+        if (m.age >= m.removeAt) this.holes[i] = null
+        continue
+      }
+      if (m.age >= m.life) {
+        // Natural escape — no combo penalty (GDD note). Series escapes as a group.
+        if (m.seriesId) this._removeSeries(m.seriesId, 'burrow', false)
+        else this._retire(m, 'burrow')
+      }
+    }
+  }
+
+  _updatePhase() {
+    const elapsed = 1 - this.timeLeft / this.totalTime
+    let ph = PHASES[0]
+    for (const p of PHASES) if (elapsed >= p.pctStart) ph = p
+    if (ph !== this.phase) {
+      this.phase = ph
+      const nowFever = !!ph.fever
+      if (nowFever !== this.fever) {
+        this.fever = nowFever
+        this.sound?.setFeverTempo(nowFever)
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  //  Spawning
+  // ---------------------------------------------------------------------------
+  _emptyHoles() {
+    const out = []
+    for (let i = 0; i < this.holes.length; i++) {
+      if (!this.holes[i] && !this.closed.has(i)) out.push(i)
+    }
+    return out
+  }
+
+  // Phase spawn weights with any types this difficulty disables removed.
+  _spawnWeights() {
+    const disabled = this.difficulty.disabledTypes
+    if (!disabled || disabled.length === 0) return this.phase.weights
+    const w = { ...this.phase.weights }
+    for (const t of disabled) delete w[t]
+    if (Object.keys(w).length === 0) w.normal = 1 // never leave weights empty
+    return w
+  }
+
+  _baseLife(type) {
+    let life = this.difficulty.spawnLife / this.phase.speedMult
+    if (MOLE_TYPES[type]?.fastMultiplier) life *= MOLE_TYPES[type].fastMultiplier
+    return life
+  }
+
+  _createMole(type, hole, extra = {}) {
+    const def = MOLE_TYPES[type] || { score: 0, hits: 1, chain: [type] }
+    return {
+      id: uid(), hole, type, def,
+      appearance: def.chain[0],
+      hp: def.hits,
+      age: 0,
+      life: this._baseLife(type),
+      state: 'up',
+      dead: false,
+      ...extra,
+    }
+  }
+
+  _spawn() {
+    if (this._emptyHoles().length === 0) return
+
+    // A spawn tick may pop several moles at once (per difficulty spawnBurst).
+    const [bmin, bmax] = this.difficulty.spawnBurst || [1, 1]
+    const burst = Math.round(rand(bmin, bmax + 0.49))
+    const rabbitRate = this.difficulty.rabbitRate ?? 0.03
+    for (let n = 0; n < burst; n++) {
+      const empties = this._emptyHoles()
+      if (empties.length === 0) return
+      // Clock rabbit spawns on its own configurable roll (not phase weights).
+      let kind = Math.random() < rabbitRate ? 'rabbit' : weightedPick(this._spawnWeights())
+      if (kind === 'series') {
+        // Only attempt a series if there is room; otherwise spawn a single mole.
+        if (empties.length >= 3) { this._spawnSeries(empties); continue }
+      }
+      const single = kind === 'series' ? 'normal' : kind
+      const hole = choice(empties)
+      this.holes[hole] = this._createMole(single, hole)
+    }
+  }
+
+  _spawnSeries(empties) {
+    // Prefer MOLE (4) when possible, else 123 (3).
+    let kind = '123'
+    if (empties.length >= 4 && Math.random() < 0.5) kind = 'MOLE'
+    const def = SERIES[kind]
+    if (empties.length < def.members.length) return
+    const holes = [...empties].sort(() => Math.random() - 0.5).slice(0, def.members.length)
+    const seriesId = uid()
+    this._seriesExpect[seriesId] = 0
+    const life = this.difficulty.spawnLife / this.phase.speedMult
+    def.members.forEach((appearance, idx) => {
+      const hole = holes[idx]
+      this.holes[hole] = {
+        id: uid(), hole, type: appearance, def: { score: def.scores[idx], hits: 1, chain: [appearance] },
+        appearance, hp: 1, age: 0, life, state: 'up', dead: false,
+        seriesId, seriesKind: kind, seriesIndex: idx,
+      }
+    })
+  }
+
+  // ---------------------------------------------------------------------------
+  //  Effects & particles
+  // ---------------------------------------------------------------------------
+  _fx(hole, text, kind = 'score', fx = null) {
+    this.effects.push({ id: uid(), hole, text, kind, fx, ttl: fx ? 650 : 800 })
+  }
+
+  // ---------------------------------------------------------------------------
+  //  Hitting
+  // ---------------------------------------------------------------------------
+  hit(holeIndex) {
+    if (this.status !== 'playing') return
+    this._lastStrikeLanded = false
+
+    // Closed holes are inert. A plate tapped on a closed hole does nothing and
+    // is NOT consumed; a normal tap on a closed hole is simply ignored.
+    if (this.closed.has(holeIndex)) {
+      if (this.activeHammer === 'plate') this.sound?.miss()
+      return
+    }
+
+    const mole = this.holes[holeIndex]
+    const hammer = this.activeHammer
+
+    // Frozen board: tapping a frozen mole grants time; nothing else reacts.
+    if (this.freezeLeft > 0) {
+      if (mole && mole.frozen && !mole.dead) {
+        this.timeLeft += EFFECTS.iceTimeBonusPerHit
+        this._fx(holeIndex, `+${EFFECTS.iceTimeBonusPerHit}s`, 'time')
+        this._retire(mole, 'hit')
+        this.sound?.freeze()
+        this._bumpCombo(1)
+      }
+      return
+    }
+
+    // Wooden plate works on ANY hole (mole or empty): closes it.
+    if (hammer === 'plate') return this._plateStrike(holeIndex, mole)
+
+    if (!mole || mole.dead) {
+      // Empty hole tap -> combo break (GDD combo rule 1)
+      if (this.combo > 0) this._fx(holeIndex, '✗', 'miss')
+      this._breakCombo()
+      this.sound?.miss()
+      return
+    }
+
+    // Power / Bomb / Ice hammers override normal resolution entirely.
+    if (hammer === 'power') return this._powerSmash(mole)
+    if (hammer === 'bomb') return this._bombSmash(mole)
+    if (hammer === 'ice') return this._iceSmash(mole)
+
+    switch (true) {
+      case !!mole.seriesId:
+        this._hitSeries(mole); break
+      case mole.type === 'bomb':
+        this._hitBomb(mole); break
+      case mole.type === 'rabbit':
+        this._hitRabbit(mole); break
+      case mole.type === 'nurse':
+        this._hitNurse(mole); break
+      case mole.type === 'golden':
+        this._killMole(mole, mole.def.score); this.sound?.golden(); break
+      case mole.type === 'stone' || mole.type === 'metal':
+        this._hitArmored(mole); break
+      default:
+        this._hitNormal(mole)
+    }
+  }
+
+  _hitNormal(mole) {
+    this._killMole(mole, mole.def.score)
+    this.sound?.hit()
+    this._maybeConsumeAfterNormalStrike()
+  }
+
+  _hitArmored(mole) {
+    mole.hp -= 1
+    if (mole.hp <= 0) {
+      this._killMole(mole, mole.def.score)
+      this.sound?.hit()
+    } else {
+      // Crack a layer: change appearance, shake, no score, combo preserved.
+      mole.appearance = mole.def.chain[mole.def.chain.length - mole.hp]
+      mole.state = 'shake'
+      setTimeout(() => { if (!mole.dead) mole.state = 'up' }, 400)
+      if (mole.type === 'metal') this.sound?.hitMetal()
+      else this.sound?.hitStone()
+    }
+    this._maybeConsumeAfterNormalStrike()
+  }
+
+  _hitSeries(mole) {
+    const { seriesId, seriesKind } = mole
+    const def = SERIES[seriesKind]
+
+    const expected = this._seriesExpect[seriesId] ?? 0
+    if (mole.seriesIndex === expected) {
+      const pts = def.scores[mole.seriesIndex]
+      this._killMole(mole, pts)
+      this._seriesExpect[seriesId] = expected + 1
+      this.sound?.seriesNote(seriesKind, mole.seriesIndex)
+      // Completed the whole word?
+      const remaining = this.holes.some((h) => h && h.seriesId === seriesId && !h.dead)
+      if (!remaining) { this.sound?.seriesComplete(); delete this._seriesExpect[seriesId] }
+      this._maybeConsumeAfterNormalStrike()
+    } else {
+      // Wrong order -> combo resets + loud feedback. What happens to the set is
+      // configurable per difficulty: 'flee' = all disappear, 'normal' (default)
+      // = survivors turn into plain normal moles you can still whack.
+      const mode = this.difficulty.seriesMissMode || 'normal'
+      this._fx(mole.hole, 'MISS!', 'miss')
+      if (mode === 'flee') {
+        this._removeSeries(seriesId, 'burrow', true)
+      } else {
+        this._orphanSeriesToNormal(seriesId)
+      }
+      this._breakCombo()
+      this._setFlash('miss')
+      this.sound?.seriesFail()
+    }
+  }
+
+  _hitBomb(mole) {
+    // Normal hammer on a bomb: lose a heart, combo reset.
+    this._retire(mole, 'explode')
+    this.sound?.bomb()
+    this._fx(mole.hole, '', 'boom', 'boom') // orange explosion sprite
+    this._loseLife(EFFECTS.bombLifePenalty)
+    this._breakCombo()
+  }
+
+  // --- Special-hammer strikes -------------------------------------------------
+
+  // Power Hammer: one-hit-kill ANY mole for full score; bombs & rabbits die
+  // harmlessly (no life loss, no combo break). 10 uses.
+  _powerSmash(mole) {
+    switch (mole.type) {
+      case 'bomb':
+        // defused: no explosion — the bomb just dodges back down the hole
+        this._retire(mole, 'burrow'); this.sound?.miss(); break
+      case 'rabbit':
+        this._hitRabbit(mole); break // clock rabbit -> bonus time
+      case 'nurse':
+        this._hitNurse(mole); break
+      default: {
+        // normal / stone / metal / golden / series member -> full score kill
+        const sid = mole.seriesId
+        this._killMole(mole, mole.def.score)
+        this.sound?.hitMetal()
+        // don't leave a broken series behind
+        if (sid != null) this._orphanSeriesToNormal(sid)
+      }
+    }
+    this._consumeHammer()
+  }
+
+  // Ice Hammer: hitting ANY mole (bomb / rabbit / nurse included) freezes the
+  // whole board for a moment. The struck mole is destroyed without penalty
+  // (scoreable ones still score, nurse still gives its bonus). Single use.
+  _iceSmash(mole) {
+    switch (mole.type) {
+      case 'bomb':
+        this._retire(mole, 'explode'); break
+      case 'rabbit':
+        this._hitRabbit(mole); break // clock rabbit -> bonus time
+      case 'nurse':
+        this._hitNurse(mole); break
+      default: {
+        const sid = mole.seriesId
+        this._killMole(mole, mole.def.score)
+        if (sid != null) this._orphanSeriesToNormal(sid)
+      }
+    }
+    this._consumeHammer()
+    this._triggerFreeze()
+  }
+
+  // Wooden Plate: taps a hole to close it permanently (no more moles there).
+  // Any mole in that hole dies instantly with no penalty (bomb/rabbit/metal/
+  // stone included); scoreable moles still give points. Single use — but a
+  // plate tapped on an already-closed hole was handled earlier (no consume).
+  _plateStrike(holeIndex, mole) {
+    if (mole && !mole.dead) {
+      if (!mole.def.harmful && mole.def.score > 0) {
+        this._applyScore(mole.def.score, holeIndex)
+        this._bumpCombo(1)
+      }
+      const sid = mole.seriesId
+      this._retire(mole, 'hit')
+      if (sid != null) this._orphanSeriesToNormal(sid)
+    }
+    this.closed.add(holeIndex)
+    this.sound?.plate()
+    this._consumeHammer()
+  }
+
+  // Any surviving members of a series (after some were destroyed out of order,
+  // e.g. by a bomb blast or power hammer) revert to plain normal moles so the
+  // player is never left with an un-completable "broken" series.
+  _orphanSeriesToNormal(seriesId) {
+    if (seriesId == null) return
+    this.holes.forEach((m) => {
+      if (m && m.seriesId === seriesId && !m.dead) {
+        m.type = 'normal'
+        m.appearance = 'normal'
+        m.def = MOLE_TYPES.normal
+        m.hp = 1
+        m.seriesId = undefined
+        m.seriesKind = undefined
+        m.seriesIndex = undefined
+      }
+    })
+    delete this._seriesExpect[seriesId]
+  }
+
+  // Bomb Hammer: hitting ANY mole triggers a cross blast (up/down/left/right).
+  // Every mole caught is destroyed; scoreable ones give points, bombs & rabbits
+  // are cleared harmlessly. Single use.
+  _bombSmash(mole) {
+    this.sound?.bomb()
+    this._fx(mole.hole, '', 'boom', 'cross') // big cross at the centre
+    const cols = this.cols
+    const rows = this.rows
+    const r = Math.floor(mole.hole / cols)
+    const c = mole.hole % cols
+    const center = [r, c]
+    const arms = [[r - 1, c], [r + 1, c], [r, c - 1], [r, c + 1]]
+    let gained = 0
+    const hitSeries = new Set()
+    // arms: always show an explosion burst on the up/down/left/right holes
+    arms.forEach(([nr, nc]) => {
+      if (nr < 0 || nc < 0 || nr >= rows || nc >= cols) return
+      this._fx(nr * cols + nc, '', 'boom', 'boom')
+    })
+    // resolve damage on centre + arms
+    ;[center, ...arms].forEach(([nr, nc]) => {
+      if (nr < 0 || nc < 0 || nr >= rows || nc >= cols) return
+      const nm = this.holes[nr * cols + nc]
+      if (!nm || nm.dead) return
+      if (nm.def.harmful) {
+        this._retire(nm, 'explode') // bombs & rabbits cleared, no penalty
+      } else {
+        if (nm.seriesId != null) hitSeries.add(nm.seriesId)
+        gained += nm.def.score
+        if (nm.def.score > 0) this._bumpCombo(1)
+        this._killMole(nm, nm.def.score, true)
+      }
+    })
+    // any series partly caught in the blast: survivors become normal moles
+    hitSeries.forEach((sid) => this._orphanSeriesToNormal(sid))
+    if (gained) this._applyScore(gained, mole.hole)
+    this._consumeHammer()
+  }
+
+  // Clock Rabbit: hitting it grants bonus time and keeps the combo alive.
+  _hitRabbit(mole) {
+    this._retire(mole, 'hit')
+    this.timeLeft += EFFECTS.rabbitTimeBonus
+    this._fx(mole.hole, `+${EFFECTS.rabbitTimeBonus}s`, 'time')
+    this.sound?.nurse()
+    this._setFlash('heal')
+    this._bumpCombo(1)
+  }
+
+  // Nurse mole: restores a heart (no time bonus). If already full, no effect.
+  _hitNurse(mole) {
+    this._retire(mole, 'hit')
+    this.sound?.nurse()
+    if (this.lives < this.maxLives) {
+      this.lives += 1
+      this._fx(mole.hole, '❤️+1', 'heal')
+      this._setFlash('heal')
+    }
+    this._bumpCombo(1) // nurse keeps combo alive (GDD combo list)
+  }
+
+  // ---------------------------------------------------------------------------
+  //  Kill / retire helpers
+  // ---------------------------------------------------------------------------
+  _killMole(mole, points, silent = false) {
+    this._lastStrikeLanded = true
+    if (!silent) this._applyScore(points, mole.hole)
+    if (points > 0 && !silent) this._bumpCombo(1)
+    this._retire(mole, 'hit')
+  }
+
+  _applyScore(points, hole) {
+    if (points <= 0) return
+    const mult = this.phase.scoreMult || 1
+    const gained = points * mult
+    this.score += gained
+    this._fx(hole, `+${gained}`, mult > 1 ? 'feverscore' : 'score')
+  }
+
+  _retire(mole, exit) {
+    mole.dead = true
+    mole.state = exit === 'burrow' ? 'burrow' : 'hit'
+    mole.removeAt = mole.age + (exit === 'explode' ? 200 : 350)
+    if (mole.seriesId) this._seriesExpect[mole.seriesId] = undefined
+  }
+
+  _removeSeries(seriesId, exit, _penalty) {
+    this.holes.forEach((m) => {
+      if (m && m.seriesId === seriesId && !m.dead) this._retire(m, exit)
+    })
+    delete this._seriesExpect[seriesId]
+  }
+
+  // ---------------------------------------------------------------------------
+  //  Combo & rewards
+  // ---------------------------------------------------------------------------
+  _bumpCombo(n) {
+    for (let i = 0; i < n; i++) {
+      this.combo += 1
+      this.bestCombo = Math.max(this.bestCombo, this.combo)
+      this._checkComboRewards()
+    }
+    if (this.combo > 1) this.sound?.combo()
+  }
+
+  _breakCombo() { this.combo = 0 }
+
+  _checkComboRewards() {
+    const c = this.combo
+    const { hammer } = COMBO.milestones
+    if (hammer > 0 && c % hammer === 0) this._rewardHammer()
+  }
+
+  _rewardHammer() {
+    // Drop pool depends on board size: 3x3 offers the Golden hammer, 3x4 offers
+    // the wooden Plate — but the Plate is withheld when too few holes remain
+    // open (so the board can't be sealed down to almost nothing).
+    const pool = [...HAMMER_POOL.base]
+    if (this.rows >= 4) {
+      const openHoles = this.holes.length - this.closed.size
+      if (openHoles > HAMMER_POOL.plateMinOpenHoles) pool.push(HAMMER_POOL.board3x4)
+    } else {
+      pool.push(HAMMER_POOL.board3x3)
+    }
+    const key = weightedPick(
+      Object.fromEntries(pool.map((k) => [k, HAMMERS[k].dropWeight])),
+    )
+    this.inventoryHammer = key
+    this.sound?.reward()
+    this._fx(1, '🔨', 'reward')
+  }
+
+  // ---------------------------------------------------------------------------
+  //  Hammers
+  // ---------------------------------------------------------------------------
+  // Toggle a hammer on/off from the top hammer bar. Only the owned hammer can
+  // be activated; tapping the active one deactivates it (without consuming).
+  // "instant" hammers (Golden) fire their effect immediately on activation.
+  toggleHammer(key) {
+    if (key !== this.inventoryHammer) return
+
+    if (HAMMERS[key].instant) {
+      if (key === 'chain') this._goldenHammer()
+      this.inventoryHammer = null
+      this.activeHammer = null
+      this.activeHammerUses = 0
+      return
+    }
+
+    if (this.activeHammer === key) {
+      this.activeHammer = null
+      this.activeHammerUses = 0
+    } else {
+      this.activeHammer = key
+      this.activeHammerUses = HAMMERS[key].uses
+      this.sound?.reward()
+    }
+  }
+
+  // Golden Hammer: instantly turns every mole currently up into a golden mole.
+  // Golden Hammer: a golden mole pops up in EVERY open hole (holes with a mole
+  // turn golden; empty holes get a fresh golden mole). Closed / dying holes are
+  // left alone. Generous life so the player can cash them all in.
+  _goldenHammer() {
+    this.sound?.goldenRush?.()
+    let turned = 0
+    for (let i = 0; i < this.holes.length; i++) {
+      if (this.closed.has(i)) continue
+      if (this.holes[i] && this.holes[i].dead) continue
+      this.holes[i] = this._createMole('golden', i, {
+        life: this.difficulty.spawnLife, // full life (override golden's fast decay)
+      })
+      turned++
+    }
+    if (turned) this._fx(1, '👑 GOLD!', 'rush')
+  }
+
+  _maybeConsumeAfterNormalStrike() {
+    // Power hammer consumes on each armored strike (handled in _hitArmored);
+    // for other hammers a use is spent per landed strike.
+    if (!this.activeHammer) return
+    if (this.activeHammer === 'power' || this.activeHammer === 'bomb' ||
+        this.activeHammer === 'chain' || this.activeHammer === 'ice') {
+      // these are consumed by their specific handlers
+      return
+    }
+  }
+
+  _consumeHammer() {
+    if (!this.activeHammer) return
+    this.activeHammerUses -= 1
+    if (this.activeHammerUses <= 0) {
+      // Fully used up -> remove from inventory too.
+      if (this.inventoryHammer === this.activeHammer) this.inventoryHammer = null
+      this.activeHammer = null
+      this.activeHammerUses = 0
+    }
+  }
+
+  _triggerFreeze() {
+    this.freezeLeft = EFFECTS.iceFreezeDuration
+    this.sound?.freeze()
+    this.holes.forEach((m) => {
+      if (m && !m.dead) { m.frozen = true; m.prevAppearance = m.appearance; m.appearance = 'ice' }
+    })
+    this._fx(1, '❄️ FREEZE', 'rush')
+    this._setFlash('freeze', 500)
+  }
+
+  _unfreeze() {
+    this.freezeLeft = 0
+    this.holes.forEach((m) => {
+      if (m && m.frozen && !m.dead) { m.frozen = false; m.appearance = m.prevAppearance || m.appearance }
+    })
+  }
+
+  // ---------------------------------------------------------------------------
+  //  Lives & game over
+  // ---------------------------------------------------------------------------
+  _loseLife(n) {
+    this.lives -= n
+    this._setFlash('damage')
+    if (this.lives <= 0) {
+      this.lives = 0
+      this._gameOver()
+    }
+  }
+
+  _gameOver() {
+    if (this.status === 'gameover') return
+    // bonus: remaining hearts are worth points (added before high-score check)
+    this.heartBonus = this.lives * (EFFECTS.heartBonus || 0)
+    this.score += this.heartBonus
+    this.status = 'gameover'
+    this.sound?.stopBGM()
+    this.sound?.gameover()
+  }
+
+  // reset lastStrike flag before each hit (used by ice hammer proc)
+  beginHit() { this._lastStrikeLanded = false }
+}
