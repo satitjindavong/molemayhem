@@ -32,8 +32,8 @@ export const MOLE_TYPES = {
 
 // Series moles (123 / MOLE). Score is per correctly-ordered hit.
 export const SERIES = {
-  '123': { members: ['s1', 's2', 's3'], scores: [1, 2, 4] },
-  MOLE: { members: ['sM', 'sO', 'sL', 'sE'], scores: [1, 2, 4, 8] },
+  '123': { members: ['s1', 's2', 's3'], scores: [2, 4, 8] },
+  MOLE: { members: ['sM', 'sO', 'sL', 'sE'], scores: [2, 4, 8, 16] },
 }
 
 // --- Difficulty presets -------------------------------------------------------
@@ -212,7 +212,7 @@ export const HAMMER_POOL = {
 // --- Effect tuning ------------------------------------------------------------
 export const EFFECTS = {
   iceFreezeDuration: 2000, // ms
-  iceTimeBonusPerHit: 2, // seconds added when hitting during ice hammer proc
+  iceTimeBonusPerHit: 1, // seconds added when hitting during ice hammer proc
   bombLifePenalty: 1, // hearts lost when hitting a bomb
   bombBlastDefault: 'cross', // รูปแบบระเบิดค้อนระเบิด default ถ้าด่านไม่กำหนด
   rabbitTimeBonus: 2, // วินาทีที่ได้เพิ่มเมื่อตีกระต่ายนาฬิกา (ปรับได้)

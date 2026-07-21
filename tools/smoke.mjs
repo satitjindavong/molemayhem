@@ -137,8 +137,8 @@ function freshPlaying(diff = 'easy') {
   e._seriesExpect['123'] = 0
   const before = e.score
   e.hit(0); e.hit(1); e.hit(2)
-  if (e.score !== before + 7) { console.error('✗ series ordered should give 7, got', e.score - before); ok = false }
-  else console.log('✓ series 1->2->3 ordered: +7')
+  if (e.score !== before + 14) { console.error('✗ series ordered should give 14 (2+4+8), got', e.score - before); ok = false }
+  else console.log('✓ series 1->2->3 ordered: +14')
 }
 
 // TWO 123 sets up at once: order is by POSITION pooled across sets, so tapping
@@ -156,17 +156,17 @@ function freshPlaying(diff = 'easy') {
   e._seriesExpect['123'] = 0
   e.combo = 0
   const before = e.score
-  // interleave sets: 1(A)@0, 2(B)@4, 3(A)@2  -> full word, +7
+  // interleave sets: 1(A)@0, 2(B)@4, 3(A)@2  -> full word, +14 (2+4+8)
   e.hit(0); e.hit(4); e.hit(2)
-  const word1ok = e.score === before + 7 && e.combo === 3
-  // remaining leftovers form another word: 1(B)@3, 2(A)@1, 3(B)@5 -> +7 more
+  const word1ok = e.score === before + 14 && e.combo === 3
+  // remaining leftovers form another word: 1(B)@3, 2(A)@1, 3(B)@5 -> +14 more
   e.hit(3); e.hit(1); e.hit(5)
-  const word2ok = e.score === before + 14 && e.combo === 6
+  const word2ok = e.score === before + 28 && e.combo === 6
   const noBroken = e.holes.every((m) => !m || m.dead)
-  if (!word1ok) { console.error('✗ interleaved word 1 should score 7 & combo 3, got', e.score - before, e.combo); ok = false }
-  else if (!word2ok) { console.error('✗ interleaved word 2 should reach +14 & combo 6, got', e.score - before, e.combo); ok = false }
+  if (!word1ok) { console.error('✗ interleaved word 1 should score 14 & combo 3, got', e.score - before, e.combo); ok = false }
+  else if (!word2ok) { console.error('✗ interleaved word 2 should reach +28 & combo 6, got', e.score - before, e.combo); ok = false }
   else if (!noBroken) { console.error('✗ both interleaved sets should be fully cleared'); ok = false }
-  else console.log('✓ series cross-set: interleaved 1→2→3 across two sets scores +14, no foul')
+  else console.log('✓ series cross-set: interleaved 1→2→3 across two sets scores +28, no foul')
 }
 
 // Cross-set still fouls on a genuine out-of-position tap (2 before 1)

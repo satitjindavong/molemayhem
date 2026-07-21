@@ -5,8 +5,8 @@ const MOLE_INFO = [
   ['stone', 'Stone Mole', 'Tap 2 = 2 pts'],
   ['metal', 'Metal Mole', 'Tap 3 = 3 pts'],
   ['golden', 'Golden Mole', 'Super fast! = 5 pts'],
-  ['s1', '123 Mole', 'Tap in order 1→2→3'],
-  ['sM', 'MOLE Mole', 'Tap M→O→L→E'],
+  ['s1', '123 Mole', 'Tap 1→2→3 = 2/4/8'],
+  ['sM', 'MOLE Mole', 'Tap M→O→L→E = 2/4/8/16'],
   ['nurse', 'Nurse Mole', 'Heal'],
   ['bomb', 'Bomb Mole', "Don't hit! -1 heart"],
   ['rabbit', 'Clock Rabbit', 'Hit it for +time!'],
@@ -51,6 +51,7 @@ export default function HelpModal({ onClose }) {
         </div>
 
         <div className="bg-indigo-50 rounded-xl p-2.5 text-[11px] text-slate-600 space-y-1 mb-3">
+          <p>🔢 <b>Series points</b> (tap in order): <b>123</b> = 2·4·8 · <b>MOLE</b> = 2·4·8·16</p>
           <p>🔥 <b>Every 10 combo</b> = one special item!</p>
           <p>⏱ Late game enters <b>Fever Mode</b> — x2 score!</p>
         </div>
