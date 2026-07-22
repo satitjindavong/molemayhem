@@ -10,6 +10,7 @@ const MOLE_INFO = [
   ['nurse', 'Nurse Mole', 'Heal'],
   ['bomb', 'Bomb Mole', "Don't hit! -1 heart"],
   ['rabbit', 'Clock Rabbit', 'Hit it for +time!'],
+  ['rainbow', 'Rainbow Mole', '40 combo bonus = 50 pts!'],
 ]
 
 const HAMMER_INFO = [

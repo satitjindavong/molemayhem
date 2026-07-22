@@ -100,7 +100,8 @@ function freshPlaying(diff = 'easy') {
 
 // series wrong order (default 'normal' mode): survivors become normal, combo resets
 {
-  const e = freshPlaying() // easy -> seriesMissMode 'normal'
+  const e = freshPlaying()
+  e.difficulty = { ...e.difficulty, seriesMissBreaksCombo: true } // level that breaks combo
   e.combo = 7
   ;['s1', 's2', 's3'].forEach((a, i) => {
     e.holes[i] = { id: 100 + i, hole: i, type: a, def: { score: [1,2,4][i], hits: 1, chain: [a] }, appearance: a, hp: 1, age: 0, life: 3000, state: 'up', dead: false, seriesId: 999, seriesKind: '123', seriesIndex: i }
@@ -112,6 +113,22 @@ function freshPlaying(diff = 'easy') {
   if (e.combo !== 0) { console.error('✗ series wrong-order should reset combo'); ok = false }
   else if (!allNormal) { console.error('✗ default miss mode: survivors should become normal moles', survivors.map((m) => m.type)); ok = false }
   else console.log('✓ series wrong-order (normal mode): combo reset + survivors -> normal')
+}
+
+// seriesMissBreaksCombo=false (Sleepy default): wrong order keeps the combo
+{
+  const e = freshPlaying() // easy -> seriesMissBreaksCombo false
+  e.combo = 7
+  ;['s1', 's2', 's3'].forEach((a, i) => {
+    e.holes[i] = { id: 150 + i, hole: i, type: a, def: { score: [1,2,4][i], hits: 1, chain: [a] }, appearance: a, hp: 1, age: 0, life: 3000, state: 'up', dead: false, seriesId: 998, seriesKind: '123', seriesIndex: i }
+  })
+  e._seriesExpect['123'] = 0
+  e.hit(2) // hit '3' first = wrong, but Sleepy is forgiving
+  const survivors = e.holes.filter((m) => m && !m.dead)
+  const allNormal = survivors.length === 3 && survivors.every((m) => m.type === 'normal' && m.seriesId == null)
+  if (e.combo !== 7) { console.error('✗ easy series wrong-order should KEEP combo', e.combo); ok = false }
+  else if (!allNormal) { console.error('✗ easy foul should still orphan survivors -> normal'); ok = false }
+  else console.log('✓ series wrong-order (Sleepy): combo kept + survivors -> normal')
 }
 
 // series wrong order 'flee' mode: whole set disappears
@@ -172,6 +189,7 @@ function freshPlaying(diff = 'easy') {
 // Cross-set still fouls on a genuine out-of-position tap (2 before 1)
 {
   const e = freshPlaying()
+  e.difficulty = { ...e.difficulty, seriesMissBreaksCombo: true } // level that breaks combo
   const mk = (id, hole, a, idx, sid) => ({
     id, hole, type: a, def: { score: [1, 2, 4][idx], hits: 1, chain: [a] },
     appearance: a, hp: 1, age: 0, life: 3000, state: 'up', dead: false,
@@ -231,6 +249,44 @@ function freshPlaying(diff = 'easy') {
   const n = e._createMole('normal', 1)
   if (!(g.life < n.life)) { console.error('✗ golden should be faster', g.life, n.life); ok = false }
   else console.log('✓ golden life < normal life')
+}
+
+// power hammer keeps combo on a whiff (empty hole) via keepCombo config flag
+{
+  const e = freshPlaying()
+  e.inventoryHammer = 'power'; e.toggleHammer('power')
+  e.combo = 7
+  const usesBefore = e.activeHammerUses
+  e.hit(4) // hole 4 is empty
+  if (e.combo !== 7) { console.error('✗ power whiff should keep combo', e.combo); ok = false }
+  else if (e.activeHammerUses !== usesBefore) { console.error('✗ power whiff should not spend a use', e.activeHammerUses); ok = false }
+  else console.log('✓ power hammer: whiff on empty hole keeps combo + no use spent')
+}
+
+// without a keepCombo hammer, an empty-hole whiff still breaks combo
+{
+  const e = freshPlaying()
+  e.combo = 7
+  e.hit(4)
+  if (e.combo !== 0) { console.error('✗ normal whiff should break combo', e.combo); ok = false }
+  else console.log('✓ normal whiff on empty hole breaks combo (unchanged)')
+}
+
+// rainbow mole appears at the combo milestone and is worth its configured score
+{
+  const e = freshPlaying()
+  // drive combo to 39 without triggering the 40 milestone yet
+  e.combo = 39
+  e.holes[0] = e._createMole('normal', 0)
+  e.hit(0) // +1 combo -> 40 -> rainbow spawns
+  const rainbow = e.holes.find((m) => m && m.type === 'rainbow' && !m.dead)
+  if (!rainbow) { console.error('✗ combo 40 should spawn a rainbow mole'); ok = false }
+  else {
+    const before = e.score
+    e.hit(rainbow.hole)
+    if (e.score - before !== 50) { console.error('✗ rainbow should be worth 50, got', e.score - before); ok = false }
+    else console.log('✓ rainbow mole: spawns at combo 40, worth 50 pts')
+  }
 }
 
 // game over when time runs out

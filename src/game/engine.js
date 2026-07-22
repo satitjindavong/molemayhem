@@ -298,6 +298,9 @@ export class GameEngine {
     if (hammer === 'plate') return this._plateStrike(holeIndex, mole)
 
     if (!mole || mole.dead) {
+      // A hammer flagged keepCombo (Power Hammer) never punishes a whiff on an
+      // empty hole: no combo break, no miss buzzer, no use spent.
+      if (hammer && HAMMERS[hammer]?.keepCombo) return
       // Empty hole tap -> combo break (GDD combo rule 1)
       if (this.combo > 0) this._fx(holeIndex, '✗', 'miss')
       this._breakCombo()
@@ -320,6 +323,8 @@ export class GameEngine {
       case mole.type === 'nurse':
         this._hitNurse(mole); break
       case mole.type === 'golden':
+        this._killMole(mole, mole.def.score); this.sound?.golden(); break
+      case mole.type === 'rainbow':
         this._killMole(mole, mole.def.score); this.sound?.golden(); break
       case mole.type === 'stone' || mole.type === 'metal':
         this._hitArmored(mole); break
@@ -385,7 +390,10 @@ export class GameEngine {
       } else {
         this._orphanSeriesKindToNormal(seriesKind)
       }
-      this._breakCombo()
+      // Whether an out-of-order series tap resets the combo is per-difficulty
+      // (`seriesMissBreaksCombo`). Sleepy/easy is forgiving (keeps combo);
+      // the harder levels break it. Undefined defaults to breaking.
+      if (this.difficulty.seriesMissBreaksCombo !== false) this._breakCombo()
       this._setFlash('miss')
       this.sound?.seriesFail()
     }
@@ -647,8 +655,20 @@ export class GameEngine {
 
   _checkComboRewards() {
     const c = this.combo
-    const { hammer } = COMBO.milestones
+    const { hammer, rainbow } = COMBO.milestones
     if (hammer > 0 && c % hammer === 0) this._rewardHammer()
+    if (rainbow > 0 && c % rainbow === 0) this._spawnRainbow()
+  }
+
+  // Combo reward: pop a Rainbow Mole (worth MOLE_TYPES.rainbow.score) in a
+  // random open hole. Behaves like a normal mole otherwise.
+  _spawnRainbow() {
+    const empties = this._emptyHoles()
+    if (empties.length === 0) return
+    const hole = choice(empties)
+    this.holes[hole] = this._createMole('rainbow', hole)
+    this.sound?.reward()
+    this._fx(hole, '🌈', 'rush')
   }
 
   _rewardHammer() {

@@ -28,6 +28,9 @@ export const MOLE_TYPES = {
   // Clock Rabbit: a friendly time bonus (hit it for +seconds). No longer harmful.
   rabbit: { score: 0, hits: 1, chain: ['rabbit'], harmful: false, timeGift: true },
   ice: { score: 0, hits: 1, chain: ['ice'], harmful: false },
+  // Rainbow Mole: behaves like a normal mole but worth a big bonus. Appears as a
+  // combo reward (see COMBO.milestones.rainbow). Score is tunable here.
+  rainbow: { score: 50, hits: 1, chain: ['rainbow'], harmful: false },
 }
 
 // Series moles (123 / MOLE). Score is per correctly-ordered hit.
@@ -52,6 +55,7 @@ export const DIFFICULTIES = {
     spawnBurst: [1, 2], // moles spawned per spawn tick (min..max)
     rabbitRate: 0.02, // โอกาสเกิดกระต่ายนาฬิกา (เพิ่มเวลา) ต่อการเกิด 1 ตัว
     seriesMissMode: 'normal', // ตี Series ผิดลำดับ: 'normal'=กลายเป็นตุ่นธรรมดา, 'flee'=หายหมด
+    seriesMissBreaksCombo: false, // ตี Series ผิดลำดับทำให้คอมโบหลุดไหม (Sleepy = ไม่หลุด)
     startClosed: 0, // จำนวนหลุมที่ถูกปิดด้วยไม้กระดานตอนเริ่มเกม (0-4)
     bombBlast: 'square', // รูปแบบระเบิดค้อนระเบิด: 'cross'=กากบาท(5 ช่อง), 'square'=รอบตัว(9 ช่อง)
     background: 'bg/easy.jpg',
@@ -70,6 +74,7 @@ export const DIFFICULTIES = {
     spawnBurst: [2, 3],
     rabbitRate: 0.02,
     seriesMissMode: 'normal',
+    seriesMissBreaksCombo: true, // Naughty = ตีผิดลำดับคอมโบหลุด
     startClosed: 2,
     bombBlast: 'square', // 9 ช่อง
     background: 'bg/medium.jpg',
@@ -87,6 +92,7 @@ export const DIFFICULTIES = {
     spawnBurst: [2, 4],
     rabbitRate: 0.02,
     seriesMissMode: 'normal',
+    seriesMissBreaksCombo: true, // Crazy = ตีผิดลำดับคอมโบหลุด
     startClosed: 0,
     bombBlast: 'cross', // 5 ช่อง (กากบาท) — ด่านยากยังเป็นแบบเดิม
     background: 'bg/hard.jpg',
@@ -135,7 +141,7 @@ export const PHASES = [
     spawnRateMult: 1.5,
     scoreMult: 2,
     fever: true,
-    weights: { golden: 40, normal: 20, stone: 15, metal: 15, bomb: 10 },
+    weights: { golden: 40, normal: 20, stone: 10, metal: 15, bomb: 15 },
   },
 ]
 
@@ -144,6 +150,7 @@ export const PHASES = [
 export const COMBO = {
   milestones: {
     hammer: 10, // จำนวนตีเพื่อได้ ค้อนพิเศษ (ทุก ๆ 10 คอมโบ)
+    rainbow: 40, // ทุก ๆ กี่คอมโบ จะมีตุ่นสายรุ้งโผล่ (คะแนนตุ่นสายรุ้ง = MOLE_TYPES.rainbow.score)
   },
 }
 
@@ -166,6 +173,7 @@ export const HAMMERS = {
     uses: 15, // จำนวนครั้งที่ใช้ได้ (ปรับได้ที่นี่)
     instant: false,
     dropWeight: 25,
+    keepCombo: true, // ไม่ทำให้คอมโบหลุดทุกกรณี (ทุบหลุมว่าง/ตุ่นได้หมด)
     sprite: 'h_power',
   },
   chain: {

@@ -111,6 +111,14 @@
     "hit": "sprites/sE_hit.png",
     "burrow": "sprites/sE_burrow.png"
   },
+  "rainbow": {
+    "peek": "sprites/rainbow_peek.png",
+    "half": "sprites/rainbow_half.png",
+    "up": "sprites/rainbow_up.png",
+    "happy": "sprites/rainbow_happy.png",
+    "hit": "sprites/rainbow_hit.png",
+    "burrow": "sprites/rainbow_burrow.png"
+  },
   "rabbit": {
     "peek": "sprites/rabbit_peek.png",
     "half": "sprites/rabbit_half.png",

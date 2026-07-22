@@ -22,8 +22,8 @@ SHEETS = [
     ("sprite_sheet_mole1.png", ["normal", "stone", "metal", "golden"], COLS_MOLE, 6, 4, 30),
     ("sprite_sheet_mole2.png", ["bomb", "nurse", "ice", None], COLS_MOLE, 6, 4, 30),
     ("sprite_sheet_mole3.png", ["s1", "s2", "s3", "sM", "sO", "sL", "sE"], COLS_MOLE, 6, 7, 30),
-    # mole4 row 3 = clock rabbit (white rabbit w/ hourglass hat) -> 'rabbit'
-    ("sprite_sheet_mole4.png", [None, None, "rabbit", None], COLS_MOLE, 6, 4, 30),
+    # mole4: row 1 = rainbow mole -> 'rainbow'; row 3 = clock rabbit -> 'rabbit'
+    ("sprite_sheet_mole4.png", ["rainbow", None, "rabbit", None], COLS_MOLE, 6, 4, 30),
 ]
 
 # hammer1 has row/column TEXT LABELS, so its grid is not uniform. Explicit rects
