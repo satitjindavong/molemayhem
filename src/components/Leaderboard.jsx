@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Trash2 } from 'lucide-react'
 import { DIFFICULTIES, LEADERBOARD } from '../game/config'
-import { loadScores, resetScores } from '../game/storage'
+import { loadScores, resetScores, leaderboardSource } from '../game/storage'
 
 const MEDAL = ['🥇', '🥈', '🥉']
 
@@ -10,12 +10,17 @@ export default function Leaderboard({ onBack, highlight }) {
   const [version, setVersion] = useState(0) // bump to re-read after a reset
   const [confirming, setConfirming] = useState(false)
   const [scores, setScores] = useState(null) // null = still loading
+  const [source, setSource] = useState(null) // 'online' | 'local'
   const list = scores?.[tab] || []
 
   useEffect(() => {
     let alive = true
     setScores(null)
-    loadScores().then((s) => { if (alive) setScores(s) })
+    loadScores().then((s) => {
+      if (!alive) return
+      setScores(s)
+      setSource(leaderboardSource())
+    })
     return () => { alive = false }
   }, [version])
 
@@ -28,9 +33,12 @@ export default function Leaderboard({ onBack, highlight }) {
   return (
     <div key={version} className="w-full h-full flex flex-col bg-white/85 backdrop-blur rounded-3xl p-3 shadow-xl border-2 border-white">
       <h2 className="text-center font-extrabold text-xl text-indigo-500 mb-0.5">🏆 Leaderboard</h2>
-      {LEADERBOARD.resetPeriod === 'monthly' && (
-        <p className="text-center text-[10px] text-slate-400 mb-1.5">Top {LEADERBOARD.maxEntries} · resets monthly</p>
-      )}
+      <p className="text-center text-[10px] text-slate-400 mb-1.5">
+        Top {LEADERBOARD.maxEntries}
+        {LEADERBOARD.resetPeriod === 'monthly' && ' · resets monthly'}
+        {source === 'online' && ' · 🌐 Global'}
+        {source === 'local' && ' · 📱 This device'}
+      </p>
       <div className="flex gap-1 mb-2">
         {Object.values(DIFFICULTIES).map((d) => (
           <button key={d.key} onClick={() => { setTab(d.key); setConfirming(false) }}

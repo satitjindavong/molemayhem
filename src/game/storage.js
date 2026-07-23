@@ -4,7 +4,12 @@
 // otherwise they fall back to per-device localStorage. Settings always stay
 // local. Leaderboard functions are async because the online backend is.
 import { LEADERBOARD, AUDIO_DEFAULTS, DIFFICULTIES } from './config'
-import { supabase } from './supabase'
+import { supabase, isOnline } from './supabase'
+
+// Where the most recent loadScores() actually got its data: 'online' (Supabase)
+// or 'local' (localStorage fallback). Reflects reality including network fails.
+let _lastSource = isOnline ? 'online' : 'local'
+export function leaderboardSource() { return _lastSource }
 
 function readJSON(key, fallback) {
   try {
@@ -78,11 +83,13 @@ export async function loadScores() {
         (board[row.difficulty] ||= []).push(row)
       }
       for (const k of Object.keys(board)) board[k] = board[k].slice(0, LEADERBOARD.maxEntries)
+      _lastSource = 'online'
       return board
     } catch {
       /* network/backend error -> fall back to local */
     }
   }
+  _lastSource = 'local'
   return localLoad()
 }
 
