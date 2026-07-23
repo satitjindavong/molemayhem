@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Trash2 } from 'lucide-react'
-import { DIFFICULTIES } from '../game/config'
+import { DIFFICULTIES, LEADERBOARD } from '../game/config'
 import { loadScores, resetScores } from '../game/storage'
 
 const MEDAL = ['🥇', '🥈', '🥉']
@@ -9,18 +9,28 @@ export default function Leaderboard({ onBack, highlight }) {
   const [tab, setTab] = useState(highlight?.difficultyKey || 'easy')
   const [version, setVersion] = useState(0) // bump to re-read after a reset
   const [confirming, setConfirming] = useState(false)
-  const scores = loadScores()
-  const list = scores[tab] || []
+  const [scores, setScores] = useState(null) // null = still loading
+  const list = scores?.[tab] || []
 
-  const doReset = () => {
-    resetScores(tab)
+  useEffect(() => {
+    let alive = true
+    setScores(null)
+    loadScores().then((s) => { if (alive) setScores(s) })
+    return () => { alive = false }
+  }, [version])
+
+  const doReset = async () => {
+    await resetScores(tab)
     setConfirming(false)
     setVersion((v) => v + 1)
   }
 
   return (
     <div key={version} className="w-full h-full flex flex-col bg-white/85 backdrop-blur rounded-3xl p-3 shadow-xl border-2 border-white">
-      <h2 className="text-center font-extrabold text-xl text-indigo-500 mb-2">🏆 Leaderboard</h2>
+      <h2 className="text-center font-extrabold text-xl text-indigo-500 mb-0.5">🏆 Leaderboard</h2>
+      {LEADERBOARD.resetPeriod === 'monthly' && (
+        <p className="text-center text-[10px] text-slate-400 mb-1.5">Top {LEADERBOARD.maxEntries} · resets monthly</p>
+      )}
       <div className="flex gap-1 mb-2">
         {Object.values(DIFFICULTIES).map((d) => (
           <button key={d.key} onClick={() => { setTab(d.key); setConfirming(false) }}
@@ -31,7 +41,10 @@ export default function Leaderboard({ onBack, highlight }) {
       </div>
 
       <div className="flex-1 overflow-y-auto space-y-1.5 pr-1">
-        {list.length === 0 && (
+        {scores === null && (
+          <p className="text-center text-slate-400 text-sm mt-8 animate-pulse">Loading…</p>
+        )}
+        {scores !== null && list.length === 0 && (
           <p className="text-center text-slate-400 text-sm mt-8">No scores yet<br />Be the first!</p>
         )}
         {list.map((e, i) => {
@@ -49,8 +62,8 @@ export default function Leaderboard({ onBack, highlight }) {
         })}
       </div>
 
-      {/* reset scores for the current level */}
-      {confirming ? (
+      {/* reset scores for the current level — hidden unless enabled in config */}
+      {LEADERBOARD.showResetButton && (confirming ? (
         <div className="mt-2 flex items-center gap-2 bg-red-50 rounded-2xl p-2">
           <span className="flex-1 text-xs font-bold text-red-500 pl-1">Reset {DIFFICULTIES[tab].label.split(' ')[0]} scores?</span>
           <button onClick={doReset}
@@ -69,7 +82,7 @@ export default function Leaderboard({ onBack, highlight }) {
             <Trash2 size={16} /> Reset this level
           </button>
         )
-      )}
+      ))}
 
       {onBack && (
         <button onClick={onBack}

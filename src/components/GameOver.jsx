@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { RotateCcw, Home } from 'lucide-react'
 import { qualifies, submitScore } from '../game/storage'
 import { LEADERBOARD, DIFFICULTIES } from '../game/config'
@@ -7,17 +7,31 @@ import Leaderboard from './Leaderboard'
 
 export default function GameOver({ snap, onReplay, onMenu }) {
   const { score, bestCombo, difficultyKey, lives, heartBonus } = snap
-  const rank = useMemo(() => qualifies(difficultyKey, score), [difficultyKey, score])
+  const [rank, setRank] = useState(null) // null = checking, -1 = didn't qualify
   const [name, setName] = useState('')
-  const [saved, setSaved] = useState(rank < 0)
+  const [saved, setSaved] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [entry, setEntry] = useState(null)
+
+  // Check the (possibly online) board once on mount.
+  useEffect(() => {
+    let alive = true
+    qualifies(difficultyKey, score).then((r) => {
+      if (!alive) return
+      setRank(r)
+      if (r < 0) setSaved(true) // not a high score -> jump straight to leaderboard
+    })
+    return () => { alive = false }
+  }, [difficultyKey, score])
 
   const reason = lives <= 0 ? 'Out of Hearts!' : "Time's Up!"
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const finalName = name.trim() || 'PLAYER'
-    submitScore(difficultyKey, finalName, score, bestCombo)
+    setSaving(true)
+    await submitScore(difficultyKey, finalName, score, bestCombo)
     setEntry({ difficultyKey, score, name: finalName })
+    setSaving(false)
     setSaved(true)
   }
 
@@ -43,8 +57,15 @@ export default function GameOver({ snap, onReplay, onMenu }) {
         <p className="text-orange-500 font-bold text-sm">🔥 Best Combo x{bestCombo}</p>
       </div>
 
+      {/* checking rank against the (online) board */}
+      {rank === null && (
+        <div className="relative z-10 text-center mb-3 text-white/80 font-bold text-sm animate-pulse">
+          Checking leaderboard…
+        </div>
+      )}
+
       {/* name entry when qualifying */}
-      {!saved && (
+      {rank > 0 && !saved && (
         <div className="relative z-10 bg-yellow-300 rounded-3xl p-4 shadow-xl text-center mb-3 animate-[pop-up_.4s_ease]">
           <p className="font-extrabold text-amber-800">🎉 Top {LEADERBOARD.maxEntries}! (#{rank})</p>
           <p className="text-xs text-amber-700 mb-2">Enter your name</p>
@@ -55,11 +76,12 @@ export default function GameOver({ snap, onReplay, onMenu }) {
               maxLength={LEADERBOARD.maxNameLength}
               placeholder="Player name"
               autoFocus
-              className="flex-1 px-3 py-2 rounded-xl border-2 border-amber-400 font-bold text-slate-700 outline-none focus:border-amber-600"
+              disabled={saving}
+              className="flex-1 px-3 py-2 rounded-xl border-2 border-amber-400 font-bold text-slate-700 outline-none focus:border-amber-600 disabled:opacity-60"
             />
-            <button onClick={handleSave}
-              className="px-4 py-2 rounded-xl bg-amber-500 text-white font-bold shadow active:translate-y-0.5">
-              Save
+            <button onClick={handleSave} disabled={saving}
+              className="px-4 py-2 rounded-xl bg-amber-500 text-white font-bold shadow active:translate-y-0.5 disabled:opacity-60">
+              {saving ? '…' : 'Save'}
             </button>
           </div>
         </div>

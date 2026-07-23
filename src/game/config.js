@@ -229,8 +229,12 @@ export const EFFECTS = {
 }
 
 export const LEADERBOARD = {
-  maxEntries: 5,
+  maxEntries: 20, // เก็บกี่อันดับต่อด่าน (Top 20)
   maxNameLength: 10,
+  showResetButton: false, // แสดงปุ่ม "Reset this level" ใน Leaderboard ไหม (ซ่อนไว้)
+  // ล้างคะแนนอัตโนมัติตามรอบ: 'monthly' = รีเซ็ตวันที่ 1 ของทุกเดือน, 'none' = ไม่ล้าง
+  resetPeriod: 'monthly',
   storageKey: 'moleMayhem.highscores.v1',
+  periodKey: 'moleMayhem.period.v1', // เก็บ stamp รอบเดือนล่าสุด (ใช้ตรวจว่าถึงรอบรีเซ็ตหรือยัง)
   settingsKey: 'moleMayhem.settings.v1',
 }
